@@ -110,7 +110,7 @@ impl Ext2 {
         &inode_table[index]
     }
 
-    pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr)>> {
+    pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr, &structs::TypeIndicator)>> {
         let mut ret = Vec::new();
         let root = self.get_inode(inode);
         // println!("in read_dir_inode, #{} : {:?}", inode, root);
@@ -123,7 +123,7 @@ impl Ext2 {
             };
             // println!("{:?}", directory);
             byte_offset += directory.entry_size as isize;
-            ret.push((directory.inode as usize, &directory.name));
+            ret.push((directory.inode as usize, &directory.name, &directory.type_indicator));
         } 
         Ok(ret)
     }
@@ -188,8 +188,18 @@ fn main() -> Result<()> {
                     for dir in &dirs {
                         if dir.1.to_string().eq(to_dir) {
                             // TODO: maybe don't just assume this is a directory
-                            found = true;
-                            current_working_inode = dir.0;
+                            // make this a match instead
+                            match dir.2{
+
+                             structs::TypeIndicator::Directory => {
+                                current_working_inode = dir.0;
+                                found = true;
+                             }
+                                
+                            _ =>{
+                                println!("You can't cd into a directory silly")
+                            }
+                            }
                         }
                     }
                     if !found {
