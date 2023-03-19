@@ -3,12 +3,11 @@
 mod structs;
 use crate::structs::{BlockGroupDescriptor, DirectoryEntry, Inode, Superblock};
 use std::mem;
-use null_terminated::NulStr;
 use uuid::Uuid;
 use zerocopy::ByteSlice;
 use std::fmt;
 use rustyline::{DefaultEditor, Result};
-
+use null_terminated::NulStr;
 #[repr(C)]
 #[derive(Debug)]
 pub struct Ext2 {
@@ -127,6 +126,23 @@ impl Ext2 {
         } 
         Ok(ret)
     }
+
+    pub fn read_file_inode(&self, inode: usize) -> std::io::Result<Vec<&NulStr>> {
+        let mut ret = Vec::new();
+        let root = self.get_inode(inode);
+        // println!("in read_file_inode , #{} : {:?}", inode, root);
+        // println!("following direct pointer to data block: {}", root.direct_pointer[0]);
+        for cont in root.direct_pointer{ // <- todo, support large directories
+            // println!("{:?}", directory);
+            if cont != 0 {
+                let directory = unsafe { 
+                    &*(self.blocks[cont as usize - self.block_offset].as_ptr() as *const NulStr)
+                };
+                ret.push(directory);
+            }
+        } 
+        Ok(ret)
+    }
 }
 
 impl fmt::Debug for Inode<> {
@@ -187,9 +203,8 @@ fn main() -> Result<()> {
                     let mut found = false;
                     for dir in &dirs {
                         if dir.1.to_string().eq(to_dir) {
-                            // TODO: maybe don't just assume this is a directory
-                            // make this a match instead
-                            match dir.2{
+
+                            match dir.2 {
 
                              structs::TypeIndicator::Directory => {
                                 current_working_inode = dir.0;
@@ -212,10 +227,42 @@ fn main() -> Result<()> {
                 // consider supporting `-p path/to_file` to create a path of directories
                 println!("mkdir not yet implemented");
             } else if line.starts_with("cat") {
-                // `cat filename`
-                // print the contents of filename to stdout
-                // if it's a directory, print a nice error
-                println!("cat not yet implemented");
+                let elts: Vec<&str> = line.split(' ').collect();
+                // e.g., cd dir_1/dir_2 should move you down 2 directories
+                // deeper into dir_2
+                let filename = elts[1];
+                let mut found = false;
+                for dir in &dirs {
+                    if dir.1.to_string().eq(filename) {
+                        match dir.2 {
+                         structs::TypeIndicator::Directory => {
+                            println!("You can't cat a directory silly")
+                         }
+                            
+                        _ =>{
+                            found = true;
+
+                            let file_contents = match ext2.read_file_inode(dir.0) {
+                                Ok(file_cont) => {
+                                    file_cont
+                                },
+                                Err(_) => {
+                                    println!("unable to read file");
+                                    break;
+                                }
+                            };
+
+                            for cont in &file_contents {
+                                print!("{}\t", cont);
+                            }
+                            println!();    
+                        }
+                        }
+                    }
+                }
+                if !found {
+                    println!("Fooey");
+                }
             } else if line.starts_with("rm") {
                 // `rm target`
                 // unlink a file or empty directory
